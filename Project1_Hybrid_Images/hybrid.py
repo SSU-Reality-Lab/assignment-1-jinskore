@@ -17,6 +17,10 @@ def gaussian_blur_kernel_2d(sigma, height, width):
         (height x width) 크기의 커널을 반환합니다. 이 커널로 이미지를 컨볼브하면
         가우시안 블러가 적용된 결과가 나옵니다.
     '''
+    y, x = np.mgrid[-(height//2):(height//2)+1, -(width//2):(width//2)+1]
+    g = np.exp(-(x**2 + y**2) / (2*sigma**2))
+    g /= (2 * np.pi * sigma**2)
+    return g / np.sum(g)
 
 def cross_correlation_2d(img, kernel):
     '''주어진 커널(크기 m x n )을 사용하여 입력 이미지와의
@@ -33,6 +37,25 @@ def cross_correlation_2d(img, kernel):
     '''출력(Output):
         입력 이미지와 동일한 크기(같은 너비, 높이, 채널 수)의 이미지를 반환합니다.
     '''
+    if img.ndim == 2:
+        img = img[:, :, np.newaxis]
+
+    h, w, c = img.shape
+    kh, kw = kernel.shape
+    pad_h, pad_w = kh // 2, kw // 2
+
+    padded = np.pad(img, ((pad_h, pad_h), (pad_w, pad_w), (0,0)), mode='constant')
+    out = np.zeros_like(img, dtype=np.float32)
+
+    for ch in range(c):
+        for i in range(h):
+            for j in range(w):
+                region = padded[i:i+kh, j:j+kw, ch]
+                out[i, j, ch] = np.sum(region * kernel)
+
+    if out.shape[2] == 1:
+        return out[:, :, 0]
+    return out
 
 def convolve_2d(img, kernel):
     '''cross_correlation_2d()를 사용하여 2D 컨볼루션을 수행합니다.
@@ -45,6 +68,8 @@ def convolve_2d(img, kernel):
     출력(Output):
         입력 이미지와 동일한 크기(같은 너비, 높이, 채널 수)의 이미지를 반환합니다.
     '''
+    flipped = np.flipud(np.fliplr(kernel))
+    return cross_correlation_2d(img, flipped)
 
 
 def low_pass(img, sigma, size):
@@ -55,6 +80,8 @@ def low_pass(img, sigma, size):
     출력(Output):
         입력 이미지와 동일한 크기(같은 너비, 높이, 채널 수)의 이미지를 반환합니다.
     '''
+    kernel = gaussian_blur_kernel_2d(sigma, size, size)
+    return cross_correlation_2d(img, kernel)
 
 def high_pass(img, sigma, size):
     '''주어진 sigma와 정사각형 커널 크기(size)를 사용해 고역통과(high-pass)
@@ -64,6 +91,7 @@ def high_pass(img, sigma, size):
     출력(Output):
         입력 이미지와 동일한 크기(같은 너비, 높이, 채널 수)의 이미지를 반환합니다.
     '''
+    return img - low_pass(img, sigma, size)
 
 def create_hybrid_image(img1, img2, sigma1, size1, high_low1, sigma2, size2,
         high_low2, mixin_ratio, scale_factor):
